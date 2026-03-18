@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "https://lms-api.mindx.edu.vn/"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MindX Mentor Management</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <h1 class="logo-text">MindX <span class="highlight">LMS</span></h1>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Tất cả Giáo viên</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-calendar-alt"></i>
+                    <span>Quản lý Giờ dạy</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Thống kê</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-cog"></i>
+                    <span>Cài đặt</span>
+                </a>
+            </nav>
+            
+            <div class="user-profile">
+                <div class="avatar">
+                    <img src="https://ui-avatars.com/api/?name=Quang+Cao&background=random" alt="User Avatar">
+                </div>
+                <div class="user-info">
+                    <p class="user-name">TE Cao Duy Quang</p>
+                    <p class="user-role">Quản lý</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div class="page-title">
+                    <h2>Danh sách Giáo viên & Mentor</h2>
+                    <p>Quản lý và theo dõi thông tin nhân sự giảng dạy</p>
+                </div>
+                
+                <div class="header-actions">
+                    <div class="search-bar">
+                        <i class="fa-solid fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Tìm kiếm giáo viên...">
+                    </div>
+                    <button class="btn btn-primary">
+                        <i class="fa-solid fa-plus"></i> Thêm mới
+                    </button>
+                    <button class="btn btn-icon" id="refreshBtn" title="Làm mới dữ liệu">
+                        <i class="fa-solid fa-sync-alt"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-icon purple">
+                        <i class="fa-solid fa-user-tie"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3>Tổng số</h3>
+                        <p class="stat-number" id="totalTeachersCount">-</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <i class="fa-solid fa-user-check"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3>Đang hoạt động</h3>
+                        <p class="stat-number" id="activeTeachersCount">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loader -->
+            <div id="loader" class="loader-container">
+                <div class="spinner"></div>
+                <p>Đang tải dữ liệu từ MindX LMS...</p>
+            </div>
+
+            <!-- Error State -->
+            <div id="errorState" class="error-container hidden">
+                <i class="fa-solid fa-exclamation-triangle"></i>
+                <p id="errorMessage">Không thể tải dữ liệu.</p>
+                <button class="btn btn-outline" onclick="fetchTeachers()">Thử lại</button>
+            </div>
+
+            <!-- Teachers Grid -->
+            <div class="teachers-grid" id="teachersListDisplay">
+                <!-- Teacher cards will be dynamically injected here -->
+            </div>
+            
+            <!-- Pagination Info -->
+            <div class="pagination-info" id="paginationDisplay" style="display: none;">
+                <p>Hiển thị <span id="displayCount">0</span> trên tổng số <span id="totalCount">0</span> giáo viên.</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Schedule Details -->
+    <div id="scheduleModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close" id="closeModalBtn"><i class="fa-solid fa-times"></i></button>
+            <div class="modal-header">
+                <h2 id="modalTeacherName">Teacher Name</h2>
+                <p id="modalTeacherCode">Code</p>
+            </div>
+            <div class="modal-body">
+                <div class="month-selector">
+                    <button class="btn btn-icon" id="prevMonthBtn"><i class="fa-solid fa-chevron-left"></i></button>
+                    <h3 id="currentMonthDisplay">Tháng 3, 2026</h3>
+                    <button class="btn btn-icon" id="nextMonthBtn"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+                
+                <div id="modalLoader" class="loader-container hidden" style="height: 150px;">
+                    <div class="spinner"></div>
+                </div>
+                
+                <div id="modalData" class="schedule-summary hidden">
+                    <div class="summary-cards">
+                        <div class="summary-card">
+                            <h4>Tổng giờ làm trong tháng</h4>
+                            <span class="hours-big" id="totalHoursDisplay">0h</span>
+                        </div>
+                        <div class="summary-card">
+                            <h4>Class Sessions</h4>
+                            <span class="hours-medium" id="classHoursDisplay">0h</span>
+                        </div>
+                        <div class="summary-card">
+                            <h4>Office Hours</h4>
+                            <span class="hours-medium" id="officeHoursDisplay">0h</span>
+                        </div>
+                    </div>
+                    
+                    <div class="sessions-list">
+                        <h4>Chi tiết các phiên dạy</h4>
+                        <div id="sessionsContainer" class="sessions-container">
+                            <!-- Sessions injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
