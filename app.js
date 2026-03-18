@@ -34,6 +34,22 @@ const classHoursDisplay = document.getElementById('classHoursDisplay');
 const officeHoursDisplay = document.getElementById('officeHoursDisplay');
 const sessionsContainer = document.getElementById('sessionsContainer');
 
+// Stats View DOM
+const navDashboard = document.getElementById('navDashboard');
+const navStats = document.getElementById('navStats');
+const dashboardView = document.getElementById('dashboardView');
+const statsView = document.getElementById('statsView');
+const mentorSelect = document.getElementById('mentorSelect');
+const statsMonthInput = document.getElementById('statsMonthInput');
+const kpiClassInput = document.getElementById('kpiClassInput');
+const kpiOfficeInput = document.getElementById('kpiOfficeInput');
+const analyzeKpiBtn = document.getElementById('analyzeKpiBtn');
+const statsLoader = document.getElementById('statsLoader');
+const chartContainer = document.getElementById('chartContainer');
+const kpiResultCards = document.getElementById('kpiResultCards');
+
+let kpiChartInstance = null;
+
 // Modal Events
 if (closeModalBtn) {
     closeModalBtn.addEventListener('click', closeScheduleModal);
@@ -67,6 +83,33 @@ async function refreshAccessToken() {
 
 // DOM Elements ready
 document.addEventListener('DOMContentLoaded', async () => {
+    // Navigation logic
+    if (navDashboard && navStats) {
+        navDashboard.addEventListener('click', (e) => {
+            e.preventDefault();
+            navDashboard.classList.add('active');
+            navStats.classList.remove('active');
+            dashboardView.classList.remove('hidden');
+            statsView.classList.add('hidden');
+        });
+
+        navStats.addEventListener('click', (e) => {
+            e.preventDefault();
+            navStats.classList.add('active');
+            navDashboard.classList.remove('active');
+            statsView.classList.remove('hidden');
+            dashboardView.classList.add('hidden');
+            
+            // Set current month if empty
+            if (!statsMonthInput.value) {
+                const now = new Date();
+                const yyyy = now.getFullYear();
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                statsMonthInput.value = `${yyyy}-${mm}`;
+            }
+        });
+    }
+
     showLoader();
     const isReady = await refreshAccessToken();
     if (!isReady) {
@@ -153,6 +196,7 @@ async function fetchTeachers() {
         }
 
         allTeachers = data.data.teachers.data || [];
+        populateMentorSelect(allTeachers);
         const total = data.data.teachers.pagination.total || allTeachers.length;
         
         renderTeachers(allTeachers);
@@ -453,4 +497,191 @@ function calculateAndRenderSchedule(schedules) {
     totalHoursDisplay.textContent = toHours(totalMs);
     classHoursDisplay.textContent = toHours(classMs);
     officeHoursDisplay.textContent = toHours(officeMs);
+}
+
+// Stats Logic
+function populateMentorSelect(teachers) {
+    if (!mentorSelect) return;
+    mentorSelect.innerHTML = '<option value="">-- Chọn Mentor để thống kê --</option>';
+    
+    const sorted = [...teachers].sort((a,b) => (a.fullName || '').localeCompare(b.fullName || ''));
+    
+    sorted.forEach(t => {
+        const option = document.createElement('option');
+        option.value = t.id;
+        option.textContent = `${t.fullName || 'No Name'} (${t.code || t.username})`;
+        mentorSelect.appendChild(option);
+    });
+    
+    mentorSelect.addEventListener('change', checkAnalyzeButton);
+    statsMonthInput.addEventListener('change', checkAnalyzeButton);
+    kpiClassInput.addEventListener('input', checkAnalyzeButton);
+    kpiOfficeInput.addEventListener('input', checkAnalyzeButton);
+}
+
+function checkAnalyzeButton() {
+    if (mentorSelect.value && statsMonthInput.value) {
+        analyzeKpiBtn.disabled = false;
+    } else {
+        analyzeKpiBtn.disabled = true;
+    }
+}
+
+if (analyzeKpiBtn) {
+    analyzeKpiBtn.addEventListener('click', analyzeKPI);
+}
+
+async function analyzeKPI() {
+    const teacherId = mentorSelect.value;
+    const monthVal = statsMonthInput.value;
+    const targetClass = parseFloat(kpiClassInput.value) || 0;
+    const targetOffice = parseFloat(kpiOfficeInput.value) || 0;
+    
+    if (!teacherId || !monthVal) return;
+    
+    const year = parseInt(monthVal.split('-')[0]);
+    const month = parseInt(monthVal.split('-')[1]) - 1;
+    const startDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+    const endDate = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+    
+    statsLoader.classList.remove('hidden');
+    chartContainer.classList.add('hidden');
+    
+    try {
+        const payload = {
+            operationName: "findTeacherSchedule",
+            variables: {
+                dateGte: startDate.toISOString(),
+                dateLte: endDate.toISOString(),
+                type: ["CLASS_SESSION", "OFFICE_HOURS", "AVAILABLE"],
+                teacherId: teacherId
+            },
+            query: `query findTeacherSchedule($dateGte: String!, $dateLte: String!, $type: [String], $teacherId: String!, $slotIdNin: [String], $officeHourIdNin: [String]) {
+              findTeacherSchedule(payload: {date_gte: $dateGte, date_lte: $dateLte, type_in: $type, teacherId_eq: $teacherId, slotId_nin: $slotIdNin, officeHourId_nin: $officeHourIdNin}) {
+                data {
+                  id
+                  startTime
+                  endTime
+                  type
+                }
+              }
+            }`
+        };
+
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${ACCESS_TOKEN}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error("API Error");
+        const data = await response.json();
+        const schedules = data?.data?.findTeacherSchedule?.data || [];
+        
+        let actualClassMs = 0;
+        let actualOfficeMs = 0;
+        
+        schedules.forEach(session => {
+            const start = new Date(session.startTime);
+            const end = new Date(session.endTime);
+            const diff = end - start;
+            if(diff > 0) {
+                if(session.type === 'CLASS_SESSION') actualClassMs += diff;
+                if(session.type === 'OFFICE_HOURS') actualOfficeMs += diff;
+            }
+        });
+        
+        const actualClass = (actualClassMs / (1000 * 60 * 60)).toFixed(1);
+        const actualOffice = (actualOfficeMs / (1000 * 60 * 60)).toFixed(1);
+        
+        drawKpiChart(parseFloat(actualClass), targetClass, parseFloat(actualOffice), targetOffice);
+        renderKpiSummary(parseFloat(actualClass), targetClass, parseFloat(actualOffice), targetOffice);
+        
+    } catch (err) {
+        console.error("Lỗi:", err);
+        alert("Không thể phân tích dữ liệu lúc này!");
+    } finally {
+        statsLoader.classList.add('hidden');
+        chartContainer.classList.remove('hidden');
+    }
+}
+
+function drawKpiChart(actualClass, targetClass, actualOffice, targetOffice) {
+    const ctx = document.getElementById('kpiChart').getContext('2d');
+    
+    if (kpiChartInstance) {
+        kpiChartInstance.destroy();
+    }
+    
+    Chart.defaults.color = '#8b949e';
+    Chart.defaults.font.family = 'Inter';
+
+    kpiChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Class Sessions (Giờ)', 'Office Hours (Giờ)'],
+            datasets: [
+                {
+                    label: 'Thực Tế',
+                    data: [actualClass, actualOffice],
+                    backgroundColor: 'rgba(138, 43, 226, 0.7)',
+                    borderColor: 'rgba(138, 43, 226, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                },
+                {
+                    label: 'KPI Đề Ra',
+                    data: [targetClass, targetOffice],
+                    backgroundColor: 'rgba(35, 134, 54, 0.4)',
+                    borderColor: 'rgba(35, 134, 54, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    borderDash: [5, 5]
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            },
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
+            }
+        }
+    });
+}
+
+function renderKpiSummary(actualClass, targetClass, actualOffice, targetOffice) {
+    const classDiff = actualClass - targetClass;
+    const classStatus = classDiff >= 0 ? 'success' : 'danger';
+    const classIcon = classDiff >= 0 ? '<i class="fa-solid fa-check-circle"></i> Đạt / Vượt' : '<i class="fa-solid fa-times-circle"></i> Chưa Đạt';
+
+    const officeDiff = actualOffice - targetOffice;
+    const officeStatus = officeDiff >= 0 ? 'success' : 'danger';
+    const officeIcon = officeDiff >= 0 ? '<i class="fa-solid fa-check-circle"></i> Đạt / Vượt' : '<i class="fa-solid fa-times-circle"></i> Chưa Đạt';
+    
+    kpiResultCards.innerHTML = `
+        <div class="kpi-result-card ${classStatus}">
+            <h4>Đánh giá Class Sessions</h4>
+            <div class="kpi-value">${actualClass} / ${targetClass}h</div>
+            <div style="margin-top:0.5rem; font-size:0.875rem;">${classIcon} (${classDiff > 0 ? '+' : ''}${classDiff.toFixed(1)}h)</div>
+        </div>
+        <div class="kpi-result-card ${officeStatus}">
+            <h4>Đánh giá Office Hours</h4>
+            <div class="kpi-value">${actualOffice} / ${targetOffice}h</div>
+            <div style="margin-top:0.5rem; font-size:0.875rem;">${officeIcon} (${officeDiff > 0 ? '+' : ''}${officeDiff.toFixed(1)}h)</div>
+        </div>
+    `;
 }
