@@ -1,8 +1,10 @@
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
     ? 'http://localhost:3000/' 
     : '/api';
-const TOKEN = 'eyJhbGciOiJSUzI1NiIsImtpZCI6ImEyZGZiOGEzOGI1MmQ5ZjA5ZWRjYWE1MDcwYTBlOGYwYTllMDk4YmEiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiVEUgQ2FvIER1eSBRdWFuZyIsImlkIjoiNjgxYWM3ZTBkNjY2NGYwMDFjZTQ2ZjEyIiwidXNlcm5hbWUiOiJJMTgxMCIsInJvbGVzIjpbIjY4NzliYzA0MWVkOTNmMDAxY2E1NzljNiJdLCJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vbWluZHgtZWR1LXByb2QiLCJhdWQiOiJtaW5keC1lZHUtcHJvZCIsImF1dGhfdGltZSI6MTc3MzgyMDg2MCwidXNlcl9pZCI6Inlic3g2cnZNVVRTN0RlbGs0TFRiM0hDUHRlSzIiLCJzdWIiOiJ5YnN4NnJ2TVVUUzdEZWxrNExUYjNIQ1B0ZUsyIiwiaWF0IjoxNzczODIwODYxLCJleHAiOjE3NzM4MjQ0NjEsImVtYWlsIjoicXVhbmdjZEBtaW5keC5uZXQudm4iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6eyJlbWFpbCI6WyJxdWFuZ2NkQG1pbmR4Lm5ldC52biJdfSwic2lnbl9pbl9wcm92aWRlciI6ImN1c3RvbSJ9fQ.bs3gRBOHRcYD3Rc4ZJ6iN_RfgYjcwtxfa6yx6Z4MkigQiJf2k-26B_kAGkkMwzN_Lv9w9TQuAnQtX_TuJSanBxRRLahn9yDIgY3KRUp5DlhLhZ8dlkjWr0GGno3OC92Q4sA78nKsBJYQc6ydIC9Ir7ZGmHPL3nlgwLy36cxD6DK-Y2C6a57wlfjZSAmwPg9VdoFtUy4O_CQA5njV_FPYors8n6WOHvQ-1_8QMtrHqUtARrPz-IWicUct-z_pUedyf3rfwvUb5pLdcGoZ-xBL5y6QSbJdliZ-L0aEMSLLr9IZzvDdU5AEdZfrt0f9g_bb4G7_aLFBx7z8VzT8PQrrsw';
+const FIREBASE_API_KEY = 'AIzaSyAh2Au-mk5ci-hN83RUBqj1fsAmCMdvJx4';
+const REFRESH_TOKEN = 'AMf-vBwBXmhX2lPscdsBXW7tTWRfpxeOuMzqFL54oaIFptBmJpiIUe7iyGn5ddTiJpGP25_M4t7HFptpYF6jDgDHXfiHO1qJO-b0szZ00qwDjL2AvnrLTa4KkvN_WkkdBO59lM6XtmazBOwNZd2KWOv6jq6BsV1v0ThAagtoyOvs3DKvzTUCSqs';
 
+let ACCESS_TOKEN = null;
 let allTeachers = [];
 let currentSelectedTeacher = null;
 let currentMonth = new Date();
@@ -42,8 +44,36 @@ if (closeModalBtn) {
     nextMonthBtn.addEventListener('click', () => changeMonth(1));
 }
 
+async function refreshAccessToken() {
+    try {
+        const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `grant_type=refresh_token&refresh_token=${REFRESH_TOKEN}`
+        });
+        const data = await res.json();
+        if (data.id_token) {
+            ACCESS_TOKEN = data.id_token;
+            return true;
+        } else {
+            console.error("Lỗi lấy token mới:", data);
+            return false;
+        }
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
+}
+
 // DOM Elements ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    showLoader();
+    const isReady = await refreshAccessToken();
+    if (!isReady) {
+        showError("Không thể làm mới mã xác thực tự động. Vui lòng kiểm tra lại Refresh Token.");
+        return;
+    }
+    
     fetchTeachers();
 
     refreshBtn.addEventListener('click', (e) => {
@@ -107,7 +137,7 @@ async function fetchTeachers() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${TOKEN}`
+                'Authorization': `Bearer ${ACCESS_TOKEN}`
             },
             body: JSON.stringify(payload)
         });
@@ -348,7 +378,7 @@ async function fetchTeacherSchedule() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${TOKEN}`
+                'Authorization': `Bearer ${ACCESS_TOKEN}`
             },
             body: JSON.stringify(payload)
         });
