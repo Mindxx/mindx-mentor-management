@@ -17,6 +17,8 @@ const totalTeachersCount = document.getElementById('totalTeachersCount');
 const activeTeachersCount = document.getElementById('activeTeachersCount');
 const searchInput = document.getElementById('searchInput');
 const refreshBtn = document.getElementById('refreshBtn');
+const exportMonthInput = document.getElementById('exportMonthInput');
+const exportExcelBtn = document.getElementById('exportExcelBtn');
 const displayCount = document.getElementById('displayCount');
 const totalCount = document.getElementById('totalCount');
 const paginationDisplay = document.getElementById('paginationDisplay');
@@ -116,6 +118,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         showError("Không thể làm mới mã xác thực tự động. Vui lòng kiểm tra lại Refresh Token.");
         return;
     }
+
+    if (exportMonthInput) {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        exportMonthInput.value = `${yyyy}-${mm}`;
+        exportMonthInput.addEventListener('change', updateExportButtonState);
+    }
     
     fetchTeachers();
 
@@ -137,6 +147,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const term = e.target.value.toLowerCase().trim();
         filterTeachers(term);
     });
+
+    if (exportExcelBtn) {
+        exportExcelBtn.addEventListener('click', handleExportTeachersExcel);
+    }
 });
 
 async function fetchTeachers() {
@@ -197,6 +211,7 @@ async function fetchTeachers() {
 
         allTeachers = data.data.teachers.data || [];
         populateMentorSelect(allTeachers);
+        updateExportButtonState();
         const total = data.data.teachers.pagination.total || allTeachers.length;
         
         renderTeachers(allTeachers);
@@ -204,7 +219,200 @@ async function fetchTeachers() {
         hideLoader();
     } catch (err) {
         console.error("Lỗi khi tải dữ liệu giáo viên:", err);
+        if (exportExcelBtn) exportExcelBtn.disabled = true;
         showError(err.message || 'Không thể kết nối đến MindX LMS API. Token có thể đã hết hạn.');
+    }
+}
+
+function updateExportButtonState() {
+    if (!exportExcelBtn) return;
+    const hasTeachers = allTeachers.length > 0;
+    const hasMonth = Boolean(exportMonthInput && exportMonthInput.value);
+    exportExcelBtn.disabled = !hasTeachers || !hasMonth;
+}
+
+function buildMonthlySchedulePayload(teacherId, startIso, endIso) {
+    return {
+        operationName: "findTeacherSchedule",
+        variables: {
+            dateGte: startIso,
+            dateLte: endIso,
+            type: ["CLASS_SESSION", "OFFICE_HOURS"],
+            teacherId: teacherId
+        },
+        query: `query findTeacherSchedule($dateGte: String!, $dateLte: String!, $type: [String], $teacherId: String!, $slotIdNin: [String], $officeHourIdNin: [String]) {
+          findTeacherSchedule(payload: {date_gte: $dateGte, date_lte: $dateLte, type_in: $type, teacherId_eq: $teacherId, slotId_nin: $slotIdNin, officeHourId_nin: $officeHourIdNin}) {
+            data {
+              startTime
+              endTime
+              type
+            }
+          }
+        }`
+    };
+}
+
+function getMonthRange(monthValue) {
+    const [yearText, monthText] = (monthValue || '').split('-');
+    const year = parseInt(yearText, 10);
+    const month = parseInt(monthText, 10) - 1;
+    const isInvalid = Number.isNaN(year) || Number.isNaN(month) || month < 0 || month > 11;
+
+    if (isInvalid) {
+        throw new Error('Tháng export không hợp lệ.');
+    }
+
+    const startDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+    const endDate = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+    return { startIso: startDate.toISOString(), endIso: endDate.toISOString(), year, month: month + 1 };
+}
+
+async function fetchTeacherMonthlyHoursBreakdown(teacherId, startIso, endIso) {
+    const payload = buildMonthlySchedulePayload(teacherId, startIso, endIso);
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ACCESS_TOKEN}`
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        throw new Error(`Không thể lấy lịch dạy (${response.status})`);
+    }
+
+    const data = await response.json();
+    const schedules = data?.data?.findTeacherSchedule?.data || [];
+
+    let classMs = 0;
+    let officeMs = 0;
+    schedules.forEach((session) => {
+        const start = new Date(session.startTime);
+        const end = new Date(session.endTime);
+        const diff = end - start;
+        if (diff > 0) {
+            if (session.type === 'CLASS_SESSION') classMs += diff;
+            if (session.type === 'OFFICE_HOURS') officeMs += diff;
+        }
+    });
+
+    const classHours = Number((classMs / (1000 * 60 * 60)).toFixed(1));
+    const officeHours = Number((officeMs / (1000 * 60 * 60)).toFixed(1));
+    const totalHours = Number((classHours + officeHours).toFixed(1));
+
+    return { classHours, officeHours, totalHours };
+}
+
+function exportTeachersAsExcel(rows, monthValue) {
+    const paddedMonth = monthValue || 'thang-khong-xac-dinh';
+
+    if (window.XLSX) {
+        const worksheet = window.XLSX.utils.json_to_sheet(rows);
+        const workbook = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(workbook, worksheet, 'TongHopGio');
+        window.XLSX.writeFile(workbook, `tong-hop-gio-giao-vien-${paddedMonth}.xlsx`);
+        return;
+    }
+
+    const header = [
+        'Họ và tên',
+        'Email',
+        'Class Sessions (giờ)',
+        'Office Hours (giờ)',
+        'Tổng số giờ làm trong tháng'
+    ];
+    const body = rows.map((r) => [
+        r['Họ và tên'],
+        r['Email'],
+        r['Class Sessions (giờ)'],
+        r['Office Hours (giờ)'],
+        r['Tổng số giờ làm trong tháng']
+    ]);
+    const csvLines = [header, ...body].map((line) => line.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','));
+    const csvContent = '\ufeff' + csvLines.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tong-hop-gio-giao-vien-${paddedMonth}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function handleExportTeachersExcel() {
+    if (!allTeachers.length) {
+        alert('Danh sách giáo viên đang trống, chưa thể export.');
+        return;
+    }
+
+    if (!ACCESS_TOKEN) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) {
+            alert('Không thể làm mới mã xác thực để export.');
+            return;
+        }
+    }
+
+    const monthValue = exportMonthInput?.value;
+    if (!monthValue) {
+        alert('Vui lòng chọn tháng cần export.');
+        return;
+    }
+
+    let restoreText = '';
+    try {
+        if (exportExcelBtn) {
+            exportExcelBtn.disabled = true;
+            restoreText = exportExcelBtn.innerHTML;
+            exportExcelBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang export...';
+        }
+
+        const { startIso, endIso } = getMonthRange(monthValue);
+        const teachers = allTeachers.filter((t) => t && t.id);
+        const results = new Array(teachers.length);
+        const maxConcurrent = Math.min(5, teachers.length);
+        let nextIndex = 0;
+
+        async function worker() {
+            while (nextIndex < teachers.length) {
+                const currentIndex = nextIndex;
+                nextIndex += 1;
+                const teacher = teachers[currentIndex];
+
+                try {
+                    const { classHours, officeHours, totalHours } = await fetchTeacherMonthlyHoursBreakdown(teacher.id, startIso, endIso);
+                    results[currentIndex] = {
+                        'Họ và tên': teacher.fullName || 'N/A',
+                        'Email': teacher.email || 'N/A',
+                        'Class Sessions (giờ)': classHours,
+                        'Office Hours (giờ)': officeHours,
+                        'Tổng số giờ làm trong tháng': totalHours
+                    };
+                } catch (err) {
+                    console.warn(`Lỗi export mentor ${teacher.fullName || teacher.id}:`, err.message);
+                    results[currentIndex] = {
+                        'Họ và tên': teacher.fullName || 'N/A',
+                        'Email': teacher.email || 'N/A',
+                        'Class Sessions (giờ)': 'Lỗi tải dữ liệu',
+                        'Office Hours (giờ)': 'Lỗi tải dữ liệu',
+                        'Tổng số giờ làm trong tháng': 'Lỗi tải dữ liệu'
+                    };
+                }
+            }
+        }
+
+        await Promise.all(Array.from({ length: maxConcurrent }, () => worker()));
+        exportTeachersAsExcel(results, monthValue);
+    } catch (err) {
+        console.error('Export thất bại:', err);
+        alert(err.message || 'Không thể export Excel lúc này.');
+    } finally {
+        if (exportExcelBtn) {
+            exportExcelBtn.innerHTML = restoreText || '<i class="fa-solid fa-file-excel"></i> Export Excel';
+            updateExportButtonState();
+        }
     }
 }
 

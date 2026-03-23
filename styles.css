@@ -208,6 +208,11 @@ body {
     width: 280px;
 }
 
+.export-month-input {
+    min-width: 165px;
+    padding: 0.7rem 0.75rem;
+}
+
 .btn {
     padding: 0.75rem 1.25rem;
     border-radius: 8px;
@@ -839,4 +844,31 @@ body {
 
 .clickable-card {
     cursor: pointer;
+}
+
+@media (max-width: 992px) {
+    .top-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 640px) {
+    .search-bar {
+        width: 100%;
+    }
+
+    .search-bar input,
+    .search-bar input:focus,
+    .export-month-input,
+    #exportExcelBtn,
+    #refreshBtn {
+        width: 100%;
+    }
 }

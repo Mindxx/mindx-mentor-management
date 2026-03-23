@@ -70,6 +70,10 @@
                         <i class="fa-solid fa-search"></i>
                         <input type="text" id="searchInput" placeholder="Tìm kiếm giáo viên...">
                     </div>
+                    <input type="month" id="exportMonthInput" class="search-input export-month-input" title="Chọn tháng để export" />
+                    <button class="btn btn-outline" id="exportExcelBtn" title="Export danh sách giáo viên ra Excel" disabled>
+                        <i class="fa-solid fa-file-excel"></i> Export Excel
+                    </button>
                     <button class="btn btn-primary">
                         <i class="fa-solid fa-plus"></i> Thêm mới
                     </button>
@@ -227,6 +231,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
