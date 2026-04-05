@@ -2,7 +2,7 @@ const API_URL = (window.location.hostname === 'localhost' || window.location.hos
     ? 'http://localhost:3000/' 
     : '/api';
 const FIREBASE_API_KEY = 'AIzaSyAh2Au-mk5ci-hN83RUBqj1fsAmCMdvJx4';
-const REFRESH_TOKEN = 'AMf-vBwBXmhX2lPscdsBXW7tTWRfpxeOuMzqFL54oaIFptBmJpiIUe7iyGn5ddTiJpGP25_M4t7HFptpYF6jDgDHXfiHO1qJO-b0szZ00qwDjL2AvnrLTa4KkvN_WkkdBO59lM6XtmazBOwNZd2KWOv6jq6BsV1v0ThAagtoyOvs3DKvzTUCSqs';
+const REFRESH_TOKEN = 'AMf-vBxbetbveV9EoBki8osEmdPZOPkCGVeGyWq1LvpultvCzN-vxD0dad3iV3r9C4iJk9zslynx7qnzQx_6i43Gllx2E20pkbwzo2I_cnbKx1nEfzOZeihPZDK2GjgbyVA-noahWijaBf2eDYYeklrQWWsa32DKpQbxgrhriWQD5Orx_2DJfj4';
 
 let ACCESS_TOKEN = null;
 let allTeachers = [];
